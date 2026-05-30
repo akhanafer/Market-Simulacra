@@ -7,6 +7,7 @@ the proposal fall out for free — the app simply waits for the next click.
 """
 
 import copy
+from typing import cast
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -20,6 +21,7 @@ from market_sim.models import (
     Policy,
     SimulationConfig,
     SimulationRun,
+    StepInterval,
     StepResult,
 )
 
@@ -28,6 +30,7 @@ st.set_page_config(page_title="Market Simulacra", page_icon="📈", layout="wide
 
 
 # --------------------------------------------------------------------------- state
+
 
 def _default_config() -> SimulationConfig:
     return SimulationConfig(
@@ -41,8 +44,8 @@ def _default_config() -> SimulationConfig:
 def _init_state() -> None:
     ss = st.session_state
     ss.setdefault("config", _default_config())
-    ss.setdefault("run", None)          # active SimulationRun
-    ss.setdefault("api_keys", {})       # provider name -> override key (in-memory only)
+    ss.setdefault("run", None)  # active SimulationRun
+    ss.setdefault("api_keys", {})  # provider name -> override key (in-memory only)
 
 
 def _current_key() -> str:
@@ -60,6 +63,7 @@ cfg: SimulationConfig = st.session_state.config
 
 # --------------------------------------------------------------------------- sidebar
 
+
 def render_sidebar() -> None:
     ss = st.session_state
     with st.sidebar:
@@ -67,14 +71,19 @@ def render_sidebar() -> None:
 
         models = llm.available_models()  # "Provider · Model" -> model id
         labels = list(models)
-        current_label = next((l for l, m in models.items() if m == cfg.model), labels[0])
+        current_label = next((lbl for lbl, mid in models.items() if mid == cfg.model), labels[0])
         cfg.model = models[current_label]  # snap to an available model if the old one is gone
         chosen = st.selectbox("Model", labels, index=labels.index(current_label))
         cfg.model = models[chosen]
 
         provider = llm.provider_for_model(cfg.model)
+        if provider is None:
+            st.error(f"No provider registered for model '{cfg.model}'.")
+            return
         env_key = llm.resolve_default_key(cfg.model)
-        placeholder = f"loaded from {provider.key_env}" if env_key else f"set {provider.key_env} or paste here"
+        placeholder = (
+            f"loaded from {provider.key_env}" if env_key else f"set {provider.key_env} or paste here"
+        )
         entered = st.text_input(
             f"{provider.label} API key (overrides env)",
             value=ss.api_keys.get(provider.name, ""),
@@ -114,6 +123,7 @@ def _render_templates() -> None:
 
 # --------------------------------------------------------------------------- setup tab
 
+
 def render_setup() -> None:
     st.subheader("Environment")
     cfg.environment_description = st.text_area(
@@ -129,7 +139,10 @@ def render_setup() -> None:
     cfg.start_date = c1.date_input("Start date", value=cfg.start_date)
     cfg.duration_days = c2.number_input("Duration (days)", min_value=1, value=cfg.duration_days, step=1)
     intervals = ["day", "week", "month", "year"]
-    cfg.step_interval = c3.selectbox("Step interval", intervals, index=intervals.index(cfg.step_interval))
+    cfg.step_interval = cast(
+        StepInterval,
+        c3.selectbox("Step interval", intervals, index=intervals.index(cfg.step_interval)),
+    )
     cfg.shared_decisions = c4.checkbox(
         "Shared decisions",
         value=cfg.shared_decisions,
@@ -172,8 +185,12 @@ def _render_personas() -> None:
                 personas.pop(i)
                 st.rerun()
             p.description = st.text_area(
-                "Description", value=p.description, key=f"pdesc_{p.id}",
-                height=80, label_visibility="collapsed", placeholder="Role, incentives, constraints...",
+                "Description",
+                value=p.description,
+                key=f"pdesc_{p.id}",
+                height=80,
+                label_visibility="collapsed",
+                placeholder="Role, incentives, constraints...",
             )
     if st.button("➕ Add persona"):
         personas.append(Persona(name=f"Actor {len(personas) + 1}"))
@@ -187,8 +204,16 @@ def _render_indices() -> None:
     for i, ix in enumerate(indices):
         with st.container(border=True):
             row = st.columns([4, 6, 1])
-            ix.name = row[0].text_input("Name", value=ix.name, key=f"in_{ix.id}", label_visibility="collapsed", placeholder="GDP")
-            ix.description = row[1].text_input("Description", value=ix.description, key=f"id_{ix.id}", label_visibility="collapsed", placeholder="what it measures")
+            ix.name = row[0].text_input(
+                "Name", value=ix.name, key=f"in_{ix.id}", label_visibility="collapsed", placeholder="GDP"
+            )
+            ix.description = row[1].text_input(
+                "Description",
+                value=ix.description,
+                key=f"id_{ix.id}",
+                label_visibility="collapsed",
+                placeholder="what it measures",
+            )
             if row[2].button("🗑️", key=f"ix_{ix.id}"):
                 indices.pop(i)
                 st.rerun()
@@ -200,11 +225,15 @@ def _render_indices() -> None:
 def _render_policy() -> None:
     st.subheader("Policy under test")
     cfg.policy.description = st.text_area(
-        "Policy description", value=cfg.policy.description, height=100,
+        "Policy description",
+        value=cfg.policy.description,
+        height=100,
         placeholder="Describe the specific economic policy being introduced...",
     )
     cfg.policy.objectives = st.text_area(
-        "Objectives", value=cfg.policy.objectives, height=80,
+        "Objectives",
+        value=cfg.policy.objectives,
+        height=80,
         placeholder="What is this policy intended to achieve?",
     )
 
@@ -220,6 +249,7 @@ def _start_run() -> None:
 
 
 # --------------------------------------------------------------------------- simulate tab
+
 
 def _client() -> llm.LLMClient | None:
     try:
@@ -336,6 +366,7 @@ def _execute_step(client: llm.LLMClient, run: SimulationRun, injection: str) -> 
 
 # --------------------------------------------------------------------------- output renderers
 
+
 def _render_step_detail(step: StepResult, is_done: bool = False) -> None:
     st.caption(f"Step {step.step_number} — {step.step_date.isoformat()}")
     if step.environment_injection:
@@ -357,7 +388,9 @@ def _render_decisions(run: SimulationRun) -> None:
         st.caption("No decisions yet.")
         return
     for step in run.steps:
-        with st.expander(f"Step {step.step_number} — {step.step_date.isoformat()}", expanded=step is run.steps[-1]):
+        with st.expander(
+            f"Step {step.step_number} — {step.step_date.isoformat()}", expanded=step is run.steps[-1]
+        ):
             if step.environment_injection:
                 st.info(f"Injected: {step.environment_injection}")
             for d in step.persona_decisions:
@@ -406,6 +439,7 @@ def _render_market(run: SimulationRun) -> None:
 
 # --------------------------------------------------------------------------- history tab
 
+
 def render_history() -> None:
     runs = storage.list_runs()
     if not runs:
@@ -432,9 +466,11 @@ def render_history() -> None:
         st.rerun()
 
     st.divider()
-    st.caption(f"Model: {run.config.model} · {len(run.steps)} steps · "
-               f"{run.config.step_interval} interval · policy: "
-               f"{run.config.policy.description[:80] or '(none)'}")
+    st.caption(
+        f"Model: {run.config.model} · {len(run.steps)} steps · "
+        f"{run.config.step_interval} interval · policy: "
+        f"{run.config.policy.description[:80] or '(none)'}"
+    )
 
     v_dec, v_idx, v_mkt = st.tabs(["🧑 Decisions", "📊 Indices", "🏦 Market state"])
     with v_dec:

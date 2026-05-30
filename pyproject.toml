@@ -11,5 +11,37 @@ dependencies = [
     "python-dotenv>=1.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "pyright>=1.1.390",
+]
+
 [tool.uv]
 package = false
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+# E/F = pyflakes+pycodestyle, I = isort, UP = pyupgrade, B = bugbear,
+# SIM = simplify, BLE = blind-except (the `# noqa: BLE001` markers in the code).
+select = ["E", "F", "I", "UP", "B", "SIM", "BLE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# The project is not installed as a package (tool.uv package = false), so put the
+# repo root on sys.path for `import market_sim`.
+pythonpath = ["."]
+
+[tool.pyright]
+include = ["market_sim", "app.py", "tests"]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
+# Optional provider SDKs (openai, google-genai) are imported lazily and may not
+# be installed; don't fail type-checking on them.
+reportMissingImports = false

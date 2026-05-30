@@ -27,6 +27,7 @@ def _ensure_dirs() -> None:
 
 # --- Templates -------------------------------------------------------------
 
+
 def save_template(name: str, config: SimulationConfig) -> Path:
     _ensure_dirs()
     path = TEMPLATES_DIR / f"{_slug(name)}.json"
@@ -50,6 +51,7 @@ def delete_template(name: str) -> None:
 
 
 # --- Results ---------------------------------------------------------------
+
 
 def result_path(run: SimulationRun) -> Path:
     return RESULTS_DIR / f"{run.id}.json"

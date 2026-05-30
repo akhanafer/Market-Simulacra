@@ -10,7 +10,7 @@ real-world policy. This is the core methodological guardrail from the proposal
 (agents shouldn't just recreate outcomes memorized during training).
 """
 
-from .models import EconomicIndex, Persona, PersonaDecision, Policy, SimulationConfig
+from .models import EconomicIndex, Persona, PersonaDecision, SimulationConfig
 
 _GUARDRAIL = (
     "Reason forward from the market state described below. Do not assume the "
@@ -79,7 +79,7 @@ def index_system() -> str:
         "You are a neutral macroeconomic analyst. Given a set of actor decisions "
         "and the market state, judge the DIRECTION each tracked indicator moves "
         "this step. Report direction and rough magnitude only — never invent "
-        "absolute numbers. Use \"undetermined\" only when the evidence genuinely "
+        'absolute numbers. Use "undetermined" only when the evidence genuinely '
         f"does not support an up/down/flat call. {_GUARDRAIL}"
     )
 

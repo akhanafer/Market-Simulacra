@@ -43,9 +43,7 @@ class LLMClient(abc.ABC):
         """Yield text deltas. Suitable for ``st.write_stream``."""
 
     @abc.abstractmethod
-    def complete(
-        self, system: str, user: str, max_tokens: int = 1024, temperature: float = 1.0
-    ) -> str:
+    def complete(self, system: str, user: str, max_tokens: int = 1024, temperature: float = 1.0) -> str:
         """Return the full text response (non-streaming)."""
 
     @abc.abstractmethod
@@ -62,6 +60,7 @@ class LLMClient(abc.ABC):
 
 
 # --------------------------------------------------------------------------- adapters
+
 
 class AnthropicClient(LLMClient):
     def __init__(self, api_key: str, model: str):
@@ -169,7 +168,7 @@ class GeminiClient(LLMClient):
 
     def __init__(self, api_key: str, model: str):
         super().__init__(api_key, model)
-        from google import genai
+        from google import genai  # pyright: ignore[reportAttributeAccessIssue]
 
         self._client = genai.Client(api_key=api_key)
 
@@ -221,14 +220,15 @@ class GeminiClient(LLMClient):
 
 # --------------------------------------------------------------------------- registry
 
+
 @dataclass(frozen=True)
 class Provider:
-    name: str                  # internal key, e.g. "anthropic"
-    label: str                 # UI label, e.g. "Anthropic"
-    key_env: str               # env var holding the API key
-    sdk_module: str            # import name used to check SDK availability
+    name: str  # internal key, e.g. "anthropic"
+    label: str  # UI label, e.g. "Anthropic"
+    key_env: str  # env var holding the API key
+    sdk_module: str  # import name used to check SDK availability
     client_cls: type[LLMClient]
-    models: dict[str, str]     # UI label -> API model id
+    models: dict[str, str]  # UI label -> API model id
 
 
 # To add a provider: install its SDK, write an LLMClient subclass above, and add

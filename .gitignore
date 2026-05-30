@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Simulation output (keep the dirs, ignore the runs)
+data/results/*.json
+data/templates/*.json
+!data/results/.gitkeep
+!data/templates/.gitkeep
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

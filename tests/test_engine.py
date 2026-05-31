@@ -4,7 +4,14 @@ structured-output index assessment (with the LLM client faked)."""
 from datetime import date
 
 from market_sim import engine, llm
-from market_sim.models import EconomicIndex, IndexAssessment, IndexAssessmentBatch, SimulationConfig
+from market_sim.models import (
+    EconomicIndex,
+    IndexAssessment,
+    IndexAssessmentBatch,
+    IndexReading,
+    SimulationConfig,
+    StepResult,
+)
 
 
 def _config(**kw) -> SimulationConfig:
@@ -71,13 +78,15 @@ class _FakeClient(llm.LLMClient):
 
     def structured_output(self, schema, system, user, max_tokens=1024, temperature=1.0):
         self.calls += 1
+        self.last_temperature = temperature
+        self.last_user = user
         assert schema is IndexAssessmentBatch
         return self._batch
 
 
 def test_assess_indices_skips_call_when_no_indices():
     client = _FakeClient(IndexAssessmentBatch(readings=[]))
-    assert engine.assess_indices(client, [], "state", [], date(2026, 1, 1)) == []
+    assert engine.assess_indices(client, _config(), [], "state", [], date(2026, 1, 1), []) == []
     assert client.calls == 0
 
 
@@ -86,6 +95,34 @@ def test_assess_indices_aligns_structured_output():
         readings=[IndexAssessment(index_name="CPI", direction="up", magnitude="slight", rationale="a")]
     )
     client = _FakeClient(batch)
-    out = engine.assess_indices(client, [EconomicIndex(name="CPI")], "state", [], date(2026, 1, 1))
+    out = engine.assess_indices(
+        client, _config(), [EconomicIndex(name="CPI")], "state", [], date(2026, 1, 1), []
+    )
     assert client.calls == 1
     assert out[0].direction == "up"
+
+
+def test_assess_indices_uses_config_temperature():
+    client = _FakeClient(IndexAssessmentBatch(readings=[]))
+    engine.assess_indices(
+        client, _config(temperature=0.0), [EconomicIndex(name="CPI")], "state", [], date(2026, 1, 1), []
+    )
+    assert client.last_temperature == 0.0
+
+
+def test_assess_indices_passes_prior_history_into_prompt():
+    client = _FakeClient(IndexAssessmentBatch(readings=[]))
+    history = [
+        StepResult(
+            step_number=1,
+            step_date=date(2026, 1, 1),
+            index_readings=[IndexReading(index_name="CPI", direction="up", magnitude="slight")],
+            market_summary="prices ticked up",
+        )
+    ]
+    engine.assess_indices(
+        client, _config(), [EconomicIndex(name="CPI")], "state", [], date(2026, 1, 8), history
+    )
+    # The analyst call must see the trajectory, not just the current state.
+    assert "HISTORY OF PRIOR STEPS" in client.last_user
+    assert "prices ticked up" in client.last_user

@@ -54,8 +54,8 @@ the loop.
 - **Adding an LLM provider:** subclass `LLMClient` (implement `stream_text`,
   `complete`, `structured_output`), then add an entry to `PROVIDERS` in `llm.py`.
   A provider auto-appears in the UI once its SDK is importable — no `app.py` or
-  `engine.py` changes. OpenAI/Gemini adapters exist but are untested live, and
-  their model IDs are placeholders to verify.
+  `engine.py` changes. Anthropic and OpenAI are implemented and enabled; the
+  Gemini adapter exists but is untested live and its model IDs are placeholders.
 - **Structured output** goes through `LLMClient.structured_output(schema, ...)`
   with a Pydantic schema — never hand-parse JSON from a text completion.
 - **The market summary is generated every step** (it feeds the next step's

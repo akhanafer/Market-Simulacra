@@ -19,9 +19,12 @@ import importlib.util
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletionMessageParam
 
 # A Pydantic model type used as a structured-output schema, returned as an instance.
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -104,10 +107,13 @@ class AnthropicClient(LLMClient):
 
 
 class OpenAIClient(LLMClient):
-    """Adapter for the OpenAI Python SDK (``uv add openai``).
+    """Adapter for the OpenAI Python SDK (``uv add openai``), on the Chat
+    Completions API.
 
-    Written to the Chat Completions API; not live-tested in this repo. Verify the
-    model IDs in ``PROVIDERS`` against the OpenAI model list before relying on it.
+    ``max_tokens`` is the cross-provider interface name; OpenAI deprecated it for
+    chat completions in favour of ``max_completion_tokens``, so we map to that.
+    Structured output uses ``chat.completions.parse`` with a Pydantic
+    ``response_format`` (OpenAI's native JSON-schema mode).
     """
 
     def __init__(self, api_key: str, model: str):
@@ -117,21 +123,26 @@ class OpenAIClient(LLMClient):
         self._client = OpenAI(api_key=api_key)
 
     @staticmethod
-    def _messages(system: str, user: str) -> list[dict]:
-        return [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ]
+    def _messages(system: str, user: str) -> "list[ChatCompletionMessageParam]":
+        return cast(
+            "list[ChatCompletionMessageParam]",
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
 
     def stream_text(self, system, user, max_tokens=1024, temperature=1.0):
         stream = self._client.chat.completions.create(
             model=self.model,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,
             temperature=temperature,
             messages=self._messages(system, user),
             stream=True,
         )
         for chunk in stream:
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
@@ -139,7 +150,7 @@ class OpenAIClient(LLMClient):
     def complete(self, system, user, max_tokens=1024, temperature=1.0):
         resp = self._client.chat.completions.create(
             model=self.model,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,
             temperature=temperature,
             messages=self._messages(system, user),
         )
@@ -148,7 +159,7 @@ class OpenAIClient(LLMClient):
     def structured_output(self, schema, system, user, max_tokens=1024, temperature=1.0):
         resp = self._client.chat.completions.parse(
             model=self.model,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,
             temperature=temperature,
             messages=self._messages(system, user),
             response_format=schema,
@@ -233,7 +244,8 @@ class Provider:
 
 # To add a provider: install its SDK, write an LLMClient subclass above, and add
 # an entry here. It appears in the UI automatically once its SDK is importable.
-# Model IDs for non-Anthropic providers are placeholders — update them to current.
+# Anthropic and OpenAI are implemented and enabled; Gemini's adapter is wired but
+# its model IDs are still placeholders to verify against the current model list.
 PROVIDERS: dict[str, Provider] = {
     "anthropic": Provider(
         name="anthropic",
@@ -255,6 +267,7 @@ PROVIDERS: dict[str, Provider] = {
         client_cls=OpenAIClient,
         models={
             "GPT-4.1": "gpt-4.1",
+            "GPT-4.1 mini": "gpt-4.1-mini",
             "GPT-4o": "gpt-4o",
         },
     ),

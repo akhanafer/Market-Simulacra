@@ -10,7 +10,14 @@ real-world policy. This is the core methodological guardrail from the proposal
 (agents shouldn't just recreate outcomes memorized during training).
 """
 
-from .models import EconomicIndex, Persona, PersonaDecision, SimulationConfig
+from .models import (
+    DIRECTION_ARROW,
+    EconomicIndex,
+    Persona,
+    PersonaDecision,
+    SimulationConfig,
+    StepResult,
+)
 
 _GUARDRAIL = (
     "Reason forward from the market state described below. Do not assume the "
@@ -36,6 +43,33 @@ def _shared_block(prior: list[PersonaDecision]) -> str:
     )
 
 
+def _history_block(history: list[StepResult], persona: Persona | None = None) -> str:
+    """Compact log of prior steps, so no call is single-shot: every call sees the
+    market and index trajectory so far. When a ``persona`` is given, it also sees
+    its own past decisions (its working memory across steps)."""
+    if not history:
+        return ""
+    chunks = []
+    for step in history:
+        lines = [f"Step {step.step_number} ({step.step_date.isoformat()}):"]
+        if step.environment_injection:
+            lines.append(f"  event injected: {step.environment_injection}")
+        if persona is not None:
+            mine = next((d for d in step.persona_decisions if d.persona_id == persona.id), None)
+            if mine and mine.decision:
+                lines.append(f"  your decision: {mine.decision}")
+        if step.index_readings:
+            readings = ", ".join(
+                f"{r.index_name} {DIRECTION_ARROW[r.direction]} ({r.magnitude})" for r in step.index_readings
+            )
+            lines.append(f"  indices: {readings}")
+        if step.market_summary:
+            lines.append(f"  market afterward: {step.market_summary}")
+        chunks.append("\n".join(lines))
+    body = "\n\n".join(chunks)
+    return f"\nHISTORY OF PRIOR STEPS (oldest first):\n{body}\n"
+
+
 def persona_system(persona: Persona) -> str:
     return (
         f"You are role-playing an economic actor in a market simulation.\n"
@@ -50,10 +84,12 @@ def persona_system(persona: Persona) -> str:
 def persona_user(
     config: SimulationConfig,
     market_state: str,
+    persona: Persona,
     step_number: int,
     step_date: str,
     injection: str,
     prior_decisions: list[PersonaDecision],
+    history: list[StepResult],
 ) -> str:
     policy = config.policy
     parts = [
@@ -63,6 +99,9 @@ def persona_user(
     ]
     if policy.objectives:
         parts.append(f"\nThe policy's stated objectives are:\n{policy.objectives}")
+    hist = _history_block(history, persona)
+    if hist:
+        parts.append(hist)
     if injection:
         parts.append(f"\nNEW DEVELOPMENT THIS STEP:\n{injection}")
     if config.shared_decisions:
@@ -89,6 +128,7 @@ def index_prompt(
     market_state: str,
     decisions: list[PersonaDecision],
     step_date: str,
+    history: list[StepResult],
 ) -> str:
     decision_lines = "\n".join(f"- {d.persona_name}: {d.decision}" for d in decisions) or "(no decisions)"
     schema = (
@@ -99,7 +139,8 @@ def index_prompt(
     )
     return (
         f"DATE: {step_date}\n\n"
-        f"MARKET STATE:\n{market_state}\n\n"
+        f"MARKET STATE:\n{market_state}\n"
+        f"{_history_block(history)}\n"
         f"ACTOR DECISIONS THIS STEP:\n{decision_lines}\n\n"
         f"INDICATORS TO ASSESS:\n{_indices_block(indices)}\n\n"
         "For EVERY indicator above, decide whether it moved up, down, stayed "
@@ -124,12 +165,14 @@ def market_prompt(
     decisions: list[PersonaDecision],
     injection: str,
     step_date: str,
+    history: list[StepResult],
 ) -> str:
     decision_lines = "\n".join(f"- {d.persona_name}: {d.decision}" for d in decisions) or "(no decisions)"
     extra = f"\nEXTERNAL DEVELOPMENT THIS STEP:\n{injection}\n" if injection else ""
     return (
         f"DATE: {step_date}\n\n"
-        f"PREVIOUS MARKET STATE:\n{previous_state}\n\n"
+        f"PREVIOUS MARKET STATE:\n{previous_state}\n"
+        f"{_history_block(history)}\n"
         f"ACTOR DECISIONS THIS STEP:\n{decision_lines}\n"
         f"{extra}\n"
         "Write the updated market state in 3-5 sentences, reflecting how these "

@@ -6,9 +6,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "streamlit>=1.40",
-    "anthropic>=0.105",  # structured outputs (messages.parse / output_config)
+    "anthropic>=0.105", # structured outputs (messages.parse / output_config)
     "pydantic>=2.7",
     "python-dotenv>=1.0",
+    "openai>=2.38.0",
 ]
 
 [dependency-groups]

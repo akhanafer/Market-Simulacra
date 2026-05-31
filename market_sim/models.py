@@ -73,6 +73,10 @@ class SimulationConfig(BaseModel):
     duration_days: int = 30
     step_interval: StepInterval = "week"
     shared_decisions: bool = False
+    # Sampling temperature for every LLM call this run. Defaults to 0.0 for
+    # reproducibility (the same config + history should reproduce a step); raise
+    # it to study behavioural variance.
+    temperature: float = 0.0
 
     def total_steps(self) -> int:
         per = INTERVAL_DAYS[self.step_interval]

@@ -38,7 +38,8 @@ so you can inject events (disasters, geopolitical shocks, etc.).
 Requires Python ≥ 3.10. Using [uv](https://docs.astral.sh/uv/):
 
 ```bash
-cd /Users/alikhanafer/Documents/research/marketSimulacra
+git clone https://github.com/akhanafer/Market-Simulacra.git
+cd Market-Simulacra
 uv sync
 cp .env.example .env        # then put your key in .env (optional — you can also set it in the UI)
 uv run streamlit run app.py

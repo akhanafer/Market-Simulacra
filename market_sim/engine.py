@@ -19,6 +19,7 @@ from .models import (
     Persona,
     PersonaDecision,
     SimulationConfig,
+    StepResult,
 )
 
 
@@ -37,26 +38,31 @@ def persona_stream(
     the_date: date,
     injection: str,
     prior_decisions: list[PersonaDecision],
+    history: list[StepResult],
 ) -> Iterator[str]:
     """Stream one persona's decision text. Consume with ``st.write_stream``."""
     system = prompts.persona_system(persona)
     user = prompts.persona_user(
         config=config,
         market_state=market_state,
+        persona=persona,
         step_number=step_number,
         step_date=the_date.isoformat(),
         injection=injection,
         prior_decisions=prior_decisions,
+        history=history,
     )
-    return client.stream_text(system, user, max_tokens=600)
+    return client.stream_text(system, user, max_tokens=600, temperature=config.temperature)
 
 
 def summarize_market(
     client: LLMClient,
+    config: SimulationConfig,
     previous_state: str,
     decisions: list[PersonaDecision],
     injection: str,
     the_date: date,
+    history: list[StepResult],
 ) -> Iterator[str]:
     """Stream the updated market-state narrative."""
     system = prompts.market_system()
@@ -65,23 +71,28 @@ def summarize_market(
         decisions=decisions,
         injection=injection,
         step_date=the_date.isoformat(),
+        history=history,
     )
-    return client.stream_text(system, user, max_tokens=500)
+    return client.stream_text(system, user, max_tokens=500, temperature=config.temperature)
 
 
 def assess_indices(
     client: LLMClient,
+    config: SimulationConfig,
     indices: list[EconomicIndex],
     market_state: str,
     decisions: list[PersonaDecision],
     the_date: date,
+    history: list[StepResult],
 ) -> list[IndexReading]:
     """Ask the analyst model for a direction reading per index via structured output."""
     if not indices:
         return []
     system = prompts.index_system()
-    user = prompts.index_prompt(indices, market_state, decisions, the_date.isoformat())
-    batch = client.structured_output(IndexAssessmentBatch, system, user, max_tokens=900, temperature=0.3)
+    user = prompts.index_prompt(indices, market_state, decisions, the_date.isoformat(), history)
+    batch = client.structured_output(
+        IndexAssessmentBatch, system, user, max_tokens=900, temperature=config.temperature
+    )
     return _align_readings(batch.readings, indices)
 
 

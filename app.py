@@ -324,7 +324,9 @@ def _execute_step(client: llm.LLMClient, run: SimulationRun, injection: str) -> 
         st.markdown(f"**{p.name}**")
         try:
             text = st.write_stream(
-                engine.persona_stream(client, rcfg, run.market_state, p, n, the_date, injection, decisions)
+                engine.persona_stream(
+                    client, rcfg, run.market_state, p, n, the_date, injection, decisions, run.steps
+                )
             )
         except Exception as exc:  # noqa: BLE001 - surface API errors to the UI
             st.error(f"Persona '{p.name}' failed: {exc}")
@@ -335,14 +337,18 @@ def _execute_step(client: llm.LLMClient, run: SimulationRun, injection: str) -> 
     if rcfg.indices:
         st.markdown("**Index readings**")
         with st.spinner("Assessing indices..."):
-            readings = engine.assess_indices(client, rcfg.indices, run.market_state, decisions, the_date)
+            readings = engine.assess_indices(
+                client, rcfg, rcfg.indices, run.market_state, decisions, the_date, run.steps
+            )
         for r in readings:
             st.write(f"{DIRECTION_ARROW[r.direction]} **{r.index_name}** ({r.magnitude}) — {r.rationale}")
 
     # The market summary still updates every step (it feeds the next step's
     # personas), but it's only shown once the run finishes: stream it live on the
     # final step, generate it quietly otherwise.
-    market_stream = engine.summarize_market(client, run.market_state, decisions, injection, the_date)
+    market_stream = engine.summarize_market(
+        client, rcfg, run.market_state, decisions, injection, the_date, run.steps
+    )
     if n >= rcfg.total_steps():
         st.markdown("**Final market state**")
         summary = str(st.write_stream(market_stream))

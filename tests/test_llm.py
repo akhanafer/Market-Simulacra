@@ -9,11 +9,13 @@ from market_sim.models import IndexAssessment, IndexAssessmentBatch
 
 def test_available_models_lists_only_installed_providers():
     models = llm.available_models()
-    # Anthropic SDK is installed -> its models appear, labelled by provider.
+    # Anthropic and OpenAI SDKs are installed -> their models appear, provider-labelled.
     assert any(label.startswith("Anthropic ·") for label in models)
     assert "claude-sonnet-4-6" in models.values()
-    # openai / google-genai are not installed here -> those providers stay hidden.
-    assert not any(label.startswith(("OpenAI ·", "Gemini ·")) for label in models)
+    assert any(label.startswith("OpenAI ·") for label in models)
+    assert "gpt-4.1" in models.values()
+    # google-genai is not installed here -> Gemini stays hidden.
+    assert not any(label.startswith("Gemini ·") for label in models)
 
 
 def test_provider_for_model():
@@ -79,3 +81,57 @@ def test_anthropic_structured_output_raises_when_empty():
     client = _anthropic_client_with(_FakeResp(None))
     with pytest.raises(RuntimeError):
         client.structured_output(IndexAssessmentBatch, "sys", "user")
+
+
+# --- OpenAI adapter (SDK client faked, no network) -------------------------
+
+
+class _FakeChatResp:
+    """Mimics chat.completions.parse: resp.choices[0].message.parsed."""
+
+    def __init__(self, parsed):
+        message = type("Msg", (), {"parsed": parsed, "content": "ok"})()
+        self.choices = [type("Choice", (), {"message": message})()]
+
+
+class _FakeCompletions:
+    def __init__(self, resp):
+        self._resp = resp
+        self.kwargs: dict = {}
+
+    def parse(self, **kwargs):
+        self.kwargs = kwargs
+        return self._resp
+
+
+def _openai_client_with(resp) -> llm.OpenAIClient:
+    client = llm.build_client("gpt-4.1", "sk-test")
+    assert isinstance(client, llm.OpenAIClient)
+    completions = _FakeCompletions(resp)
+    # Swap the real SDK client for a fake exposing chat.completions.parse.
+    chat = type("Chat", (), {"completions": completions})()
+    client._client = type("FakeSDK", (), {"chat": chat})()  # type: ignore[assignment]
+    return client
+
+
+def test_openai_structured_output_returns_parsed():
+    batch = IndexAssessmentBatch(
+        readings=[IndexAssessment(index_name="CPI", direction="down", magnitude="moderate", rationale="b")]
+    )
+    client = _openai_client_with(_FakeChatResp(batch))
+    assert client.structured_output(IndexAssessmentBatch, "sys", "user", temperature=0.0) is batch
+
+
+def test_openai_structured_output_raises_when_empty():
+    client = _openai_client_with(_FakeChatResp(None))
+    with pytest.raises(RuntimeError):
+        client.structured_output(IndexAssessmentBatch, "sys", "user")
+
+
+def test_openai_maps_max_tokens_to_max_completion_tokens():
+    client = _openai_client_with(_FakeChatResp(IndexAssessmentBatch(readings=[])))
+    client.structured_output(IndexAssessmentBatch, "sys", "user", max_tokens=42)
+    # OpenAI deprecated max_tokens for chat completions; we must send the new name.
+    sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
+    assert sent["max_completion_tokens"] == 42
+    assert "max_tokens" not in sent

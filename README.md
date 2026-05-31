@@ -12,9 +12,9 @@ so you can inject events (disasters, geopolitical shocks, etc.).
 
 ## Features
 
-- **Model selection** — pick from a short-list of models. Anthropic works out of
-  the box; OpenAI and Gemini are wired up and appear automatically once you
-  install their SDK (see *Adding a provider* below). Edit the `PROVIDERS`
+- **Model selection** — pick from a short-list of models. Anthropic and OpenAI
+  work out of the box; Gemini is wired up and appears automatically once you
+  install its SDK (see *Adding a provider* below). Edit the `PROVIDERS`
   registry in `market_sim/llm.py` to change the model lists.
 - **Environment definition** — free-text initial market state.
 - **Dynamic personas** — add, reorder (↑/↓), and remove actors with a name and
@@ -63,18 +63,18 @@ overridden per provider in the sidebar at runtime (kept in memory only).
 
 ## Adding a provider
 
-The LLM layer is provider-agnostic. Anthropic ships enabled; OpenAI and Gemini
-adapters are already written but stay hidden until their SDK is installed. To turn
-one on:
+The LLM layer is provider-agnostic. Anthropic and OpenAI ship enabled; the Gemini
+adapter is already written but stays hidden until its SDK is installed. To turn it
+on:
 
 ```bash
-uv add openai          # or: uv add google-genai
+uv add google-genai
 ```
 
 The provider's models then appear in the sidebar automatically. Set the matching
-key (`OPENAI_API_KEY` / `GEMINI_API_KEY`) in `.env` or paste it in the sidebar,
-and **verify the model IDs** in the `PROVIDERS` registry in `market_sim/llm.py`
-against the provider's current model list (the defaults there are placeholders).
+key (`OPENAI_API_KEY` / `GEMINI_API_KEY`) in `.env` or paste it in the sidebar.
+For Gemini, **verify the model IDs** in the `PROVIDERS` registry in
+`market_sim/llm.py` against its current model list (those defaults are placeholders).
 
 To add a brand-new provider, write an `LLMClient` subclass implementing
 `stream_text` and `complete`, then add an entry to `PROVIDERS`. No changes to

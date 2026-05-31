@@ -16,6 +16,9 @@ so you can inject events (disasters, geopolitical shocks, etc.).
   work out of the box; Gemini is wired up and appears automatically once you
   install its SDK (see *Adding a provider* below). Edit the `PROVIDERS`
   registry in `market_sim/llm.py` to change the model lists.
+- **Reasoning effort** — for OpenAI reasoning models (e.g. `gpt-5.4-mini`), a
+  sidebar control sets `reasoning_effort` (`none`…`xhigh`, default `minimal`) to
+  cap reasoning-token spend. The control is hidden for non-reasoning models.
 - **Environment definition** — free-text initial market state.
 - **Dynamic personas** — add, reorder (↑/↓), and remove actors with a name and
   description.

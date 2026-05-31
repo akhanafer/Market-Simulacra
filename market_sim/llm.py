@@ -23,8 +23,20 @@ from typing import TYPE_CHECKING, TypeVar, cast
 
 from pydantic import BaseModel
 
+from .models import ReasoningEffort
+
 if TYPE_CHECKING:
     from openai.types.chat import ChatCompletionMessageParam
+
+# OpenAI reasoning models accept the `reasoning_effort` parameter; ordinary chat
+# models reject it, so we only send it for these. Extend as new ones are added.
+OPENAI_REASONING_MODELS: frozenset[str] = frozenset({"gpt-5.4-mini"})
+
+
+def is_reasoning_model(model_id: str) -> bool:
+    """Whether ``model_id`` honours the ``reasoning_effort`` setting."""
+    return model_id in OPENAI_REASONING_MODELS
+
 
 # A Pydantic model type used as a structured-output schema, returned as an instance.
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -33,11 +45,12 @@ SchemaT = TypeVar("SchemaT", bound=BaseModel)
 class LLMClient(abc.ABC):
     """Common interface every provider adapter implements."""
 
-    def __init__(self, api_key: str, model: str):
+    def __init__(self, api_key: str, model: str, reasoning_effort: ReasoningEffort = "minimal"):
         if not api_key:
             raise ValueError("No API key provided.")
         self.api_key = api_key
         self.model = model
+        self.reasoning_effort: ReasoningEffort = reasoning_effort
 
     @abc.abstractmethod
     def stream_text(
@@ -66,8 +79,8 @@ class LLMClient(abc.ABC):
 
 
 class AnthropicClient(LLMClient):
-    def __init__(self, api_key: str, model: str):
-        super().__init__(api_key, model)
+    def __init__(self, api_key: str, model: str, reasoning_effort: ReasoningEffort = "minimal"):
+        super().__init__(api_key, model, reasoning_effort)
         import anthropic
 
         self._client = anthropic.Anthropic(api_key=api_key)
@@ -116,8 +129,8 @@ class OpenAIClient(LLMClient):
     ``response_format`` (OpenAI's native JSON-schema mode).
     """
 
-    def __init__(self, api_key: str, model: str):
-        super().__init__(api_key, model)
+    def __init__(self, api_key: str, model: str, reasoning_effort: ReasoningEffort = "minimal"):
+        super().__init__(api_key, model, reasoning_effort)
         from openai import OpenAI
 
         self._client = OpenAI(api_key=api_key)
@@ -132,6 +145,13 @@ class OpenAIClient(LLMClient):
             ],
         )
 
+    def _reasoning_param(self):
+        """``reasoning_effort`` for reasoning models, else the SDK's ``omit``
+        sentinel — ordinary chat models reject the parameter."""
+        from openai import omit
+
+        return self.reasoning_effort if is_reasoning_model(self.model) else omit
+
     def stream_text(self, system, user, max_tokens=1024, temperature=1.0):
         stream = self._client.chat.completions.create(
             model=self.model,
@@ -139,6 +159,7 @@ class OpenAIClient(LLMClient):
             temperature=temperature,
             messages=self._messages(system, user),
             stream=True,
+            reasoning_effort=self._reasoning_param(),
         )
         for chunk in stream:
             if not chunk.choices:
@@ -153,6 +174,7 @@ class OpenAIClient(LLMClient):
             max_completion_tokens=max_tokens,
             temperature=temperature,
             messages=self._messages(system, user),
+            reasoning_effort=self._reasoning_param(),
         )
         return resp.choices[0].message.content or ""
 
@@ -163,6 +185,7 @@ class OpenAIClient(LLMClient):
             temperature=temperature,
             messages=self._messages(system, user),
             response_format=schema,
+            reasoning_effort=self._reasoning_param(),
         )
         parsed = resp.choices[0].message.parsed
         if parsed is None:
@@ -266,6 +289,7 @@ PROVIDERS: dict[str, Provider] = {
         sdk_module="openai",
         client_cls=OpenAIClient,
         models={
+            "GPT-5.4 mini": "gpt-5.4-mini",
             "GPT-4.1": "gpt-4.1",
             "GPT-4.1 mini": "gpt-4.1-mini",
             "GPT-4o": "gpt-4o",
@@ -324,12 +348,12 @@ def resolve_default_key(model_id: str) -> str:
     return os.environ.get(provider.key_env, "") if provider else ""
 
 
-def build_client(model_id: str, api_key: str) -> LLMClient:
+def build_client(model_id: str, api_key: str, reasoning_effort: ReasoningEffort = "minimal") -> LLMClient:
     """Construct the right provider client for ``model_id``."""
     provider = provider_for_model(model_id)
     if provider is None:
         raise ValueError(f"Unknown model '{model_id}'.")
-    return provider.client_cls(api_key=api_key, model=model_id)
+    return provider.client_cls(api_key=api_key, model=model_id, reasoning_effort=reasoning_effort)
 
 
 def validate_key(model_id: str, api_key: str) -> tuple[bool, str]:

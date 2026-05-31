@@ -31,6 +31,12 @@ def test_total_steps_is_at_least_one():
     assert _config(duration_days=3, step_interval="week").total_steps() == 1
 
 
+def test_config_defaults_are_deterministic_and_cheap():
+    cfg = _config()
+    assert cfg.temperature == 0.0
+    assert cfg.reasoning_effort == "minimal"
+
+
 def test_direction_arrow_covers_every_direction():
     # Every value the Direction literal allows must have a glyph, or the UI KeyErrors.
     assert set(get_args(Direction)) == set(DIRECTION_ARROW)

@@ -145,18 +145,35 @@ class OpenAIClient(LLMClient):
             ],
         )
 
+    def _effective_effort(self) -> ReasoningEffort:
+        """Effort actually sent. Current reasoning models reject ``"minimal"``
+        (they accept none/low/medium/high/xhigh), so fall back to the lowest level
+        they do support — this also keeps older templates that stored ``"minimal"``
+        runnable rather than 400-ing."""
+        return "low" if self.reasoning_effort == "minimal" else self.reasoning_effort
+
     def _reasoning_param(self):
         """``reasoning_effort`` for reasoning models, else the SDK's ``omit``
         sentinel — ordinary chat models reject the parameter."""
         from openai import omit
 
-        return self.reasoning_effort if is_reasoning_model(self.model) else omit
+        return self._effective_effort() if is_reasoning_model(self.model) else omit
+
+    def _temperature_param(self, temperature: float):
+        """While reasoning is active, these models accept only the default
+        temperature (1) and 400 on anything else, so omit it. With reasoning off
+        (``"none"``) or on a non-reasoning model, send the requested value."""
+        from openai import omit
+
+        if is_reasoning_model(self.model) and self._effective_effort() != "none":
+            return omit
+        return temperature
 
     def stream_text(self, system, user, max_tokens=1024, temperature=1.0):
         stream = self._client.chat.completions.create(
             model=self.model,
             max_completion_tokens=max_tokens,
-            temperature=temperature,
+            temperature=self._temperature_param(temperature),
             messages=self._messages(system, user),
             stream=True,
             reasoning_effort=self._reasoning_param(),
@@ -172,7 +189,7 @@ class OpenAIClient(LLMClient):
         resp = self._client.chat.completions.create(
             model=self.model,
             max_completion_tokens=max_tokens,
-            temperature=temperature,
+            temperature=self._temperature_param(temperature),
             messages=self._messages(system, user),
             reasoning_effort=self._reasoning_param(),
         )
@@ -182,7 +199,7 @@ class OpenAIClient(LLMClient):
         resp = self._client.chat.completions.parse(
             model=self.model,
             max_completion_tokens=max_tokens,
-            temperature=temperature,
+            temperature=self._temperature_param(temperature),
             messages=self._messages(system, user),
             response_format=schema,
             reasoning_effort=self._reasoning_param(),

@@ -34,7 +34,17 @@ def test_total_steps_is_at_least_one():
 def test_config_defaults_are_deterministic_and_cheap():
     cfg = _config()
     assert cfg.temperature == 0.0
-    assert cfg.reasoning_effort == "minimal"
+    assert cfg.reasoning_effort == "low"
+    assert cfg.auto_inject is False
+    assert cfg.scripted_events == {}
+
+
+def test_scripted_events_survive_json_round_trip_with_int_keys():
+    # JSON object keys are strings; Pydantic must coerce them back to int step numbers.
+    cfg = _config(auto_inject=True, scripted_events={2: "quake", 3: "strike"})
+    restored = SimulationConfig.model_validate_json(cfg.model_dump_json())
+    assert restored.auto_inject is True
+    assert restored.scripted_events == {2: "quake", 3: "strike"}
 
 
 def test_direction_arrow_covers_every_direction():

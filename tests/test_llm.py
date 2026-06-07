@@ -166,3 +166,45 @@ def test_openai_non_reasoning_model_passes_omit_for_reasoning_effort():
     sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
     # Ordinary chat models reject the parameter, so we send the SDK's omit sentinel.
     assert sent["reasoning_effort"] is omit
+
+
+def test_openai_reasoning_model_coerces_minimal_to_low():
+    # gpt-5.4-mini rejects "minimal"; we must send "low" instead (older configs/
+    # templates may still carry "minimal").
+    client = _openai_client_with(
+        _FakeChatResp(IndexAssessmentBatch(readings=[])), model="gpt-5.4-mini", reasoning_effort="minimal"
+    )
+    client.structured_output(IndexAssessmentBatch, "sys", "user")
+    sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
+    assert sent["reasoning_effort"] == "low"
+
+
+def test_openai_reasoning_model_omits_temperature_while_reasoning():
+    from openai import omit
+
+    # Reasoning models only accept the default temperature while reasoning is on,
+    # so a requested 0.0 must be omitted rather than sent (and 400'd).
+    client = _openai_client_with(
+        _FakeChatResp(IndexAssessmentBatch(readings=[])), model="gpt-5.4-mini", reasoning_effort="low"
+    )
+    client.structured_output(IndexAssessmentBatch, "sys", "user", temperature=0.0)
+    sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
+    assert sent["temperature"] is omit
+
+
+def test_openai_reasoning_model_sends_temperature_when_reasoning_off():
+    # With reasoning off ("none"), the model behaves like a chat model and accepts
+    # an explicit temperature.
+    client = _openai_client_with(
+        _FakeChatResp(IndexAssessmentBatch(readings=[])), model="gpt-5.4-mini", reasoning_effort="none"
+    )
+    client.structured_output(IndexAssessmentBatch, "sys", "user", temperature=0.0)
+    sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
+    assert sent["temperature"] == 0.0
+
+
+def test_openai_non_reasoning_model_sends_temperature():
+    client = _openai_client_with(_FakeChatResp(IndexAssessmentBatch(readings=[])), model="gpt-4.1")
+    client.structured_output(IndexAssessmentBatch, "sys", "user", temperature=0.0)
+    sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
+    assert sent["temperature"] == 0.0

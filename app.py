@@ -19,6 +19,7 @@ from market_sim.models import (
     Persona,
     PersonaDecision,
     Policy,
+    ReasoningEffort,
     SimulationConfig,
     SimulationRun,
     StepInterval,
@@ -75,6 +76,19 @@ def render_sidebar() -> None:
         cfg.model = models[current_label]  # snap to an available model if the old one is gone
         chosen = st.selectbox("Model", labels, index=labels.index(current_label))
         cfg.model = models[chosen]
+
+        if llm.is_reasoning_model(cfg.model):
+            efforts: list[ReasoningEffort] = ["none", "minimal", "low", "medium", "high", "xhigh"]
+            cfg.reasoning_effort = cast(
+                ReasoningEffort,
+                st.selectbox(
+                    "Reasoning effort",
+                    efforts,
+                    index=efforts.index(cfg.reasoning_effort),
+                    help="How hard the model thinks before answering. Lower = fewer "
+                    "(billed) reasoning tokens; 'none' turns reasoning off.",
+                ),
+            )
 
         provider = llm.provider_for_model(cfg.model)
         if provider is None:
@@ -253,7 +267,7 @@ def _start_run() -> None:
 
 def _client() -> llm.LLMClient | None:
     try:
-        return llm.build_client(cfg.model, _current_key())
+        return llm.build_client(cfg.model, _current_key(), cfg.reasoning_effort)
     except ValueError as exc:
         st.error(str(exc))
         return None

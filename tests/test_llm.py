@@ -4,7 +4,7 @@ Anthropic adapter's structured_output (with the SDK client faked, no network).""
 import pytest
 
 from market_sim import llm
-from market_sim.models import IndexAssessment, IndexAssessmentBatch
+from market_sim.models import IndexAssessment, IndexAssessmentBatch, ReasoningEffort
 
 
 def test_available_models_lists_only_installed_providers():
@@ -104,8 +104,10 @@ class _FakeCompletions:
         return self._resp
 
 
-def _openai_client_with(resp) -> llm.OpenAIClient:
-    client = llm.build_client("gpt-4.1", "sk-test")
+def _openai_client_with(
+    resp, model: str = "gpt-4.1", reasoning_effort: ReasoningEffort = "minimal"
+) -> llm.OpenAIClient:
+    client = llm.build_client(model, "sk-test", reasoning_effort)
     assert isinstance(client, llm.OpenAIClient)
     completions = _FakeCompletions(resp)
     # Swap the real SDK client for a fake exposing chat.completions.parse.
@@ -135,3 +137,32 @@ def test_openai_maps_max_tokens_to_max_completion_tokens():
     sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
     assert sent["max_completion_tokens"] == 42
     assert "max_tokens" not in sent
+
+
+def test_is_reasoning_model():
+    assert llm.is_reasoning_model("gpt-5.4-mini")
+    assert not llm.is_reasoning_model("gpt-4.1")
+    assert not llm.is_reasoning_model("claude-opus-4-8")
+
+
+def test_gpt_5_4_mini_is_available():
+    assert "gpt-5.4-mini" in llm.available_models().values()
+
+
+def test_openai_reasoning_model_sends_reasoning_effort():
+    client = _openai_client_with(
+        _FakeChatResp(IndexAssessmentBatch(readings=[])), model="gpt-5.4-mini", reasoning_effort="low"
+    )
+    client.structured_output(IndexAssessmentBatch, "sys", "user")
+    sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
+    assert sent["reasoning_effort"] == "low"
+
+
+def test_openai_non_reasoning_model_passes_omit_for_reasoning_effort():
+    from openai import omit
+
+    client = _openai_client_with(_FakeChatResp(IndexAssessmentBatch(readings=[])), model="gpt-4.1")
+    client.structured_output(IndexAssessmentBatch, "sys", "user")
+    sent = client._client.chat.completions.kwargs  # type: ignore[attr-defined]
+    # Ordinary chat models reject the parameter, so we send the SDK's omit sentinel.
+    assert sent["reasoning_effort"] is omit

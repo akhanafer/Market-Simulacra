@@ -34,6 +34,11 @@ INTERVAL_DAYS: dict[StepInterval, int] = {
 Direction = Literal["up", "down", "flat", "undetermined"]
 Magnitude = Literal["slight", "moderate", "strong", "undetermined"]
 
+# How hard an OpenAI reasoning model "thinks" before answering. Lower settings
+# spend fewer (billed) reasoning tokens; "none" turns reasoning off. Ignored by
+# providers/models that aren't reasoning models. Mirrors the OpenAI SDK's values.
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+
 DIRECTION_ARROW: dict[Direction, str] = {"up": "▲", "down": "▼", "flat": "■", "undetermined": "?"}
 
 
@@ -77,6 +82,9 @@ class SimulationConfig(BaseModel):
     # reproducibility (the same config + history should reproduce a step); raise
     # it to study behavioural variance.
     temperature: float = 0.0
+    # Reasoning effort for OpenAI reasoning models (e.g. gpt-5.4-mini). Defaults
+    # to "minimal" to keep reasoning-token spend low; non-reasoning models ignore it.
+    reasoning_effort: ReasoningEffort = "minimal"
 
     def total_steps(self) -> int:
         per = INTERVAL_DAYS[self.step_interval]

@@ -38,6 +38,16 @@ def test_template_round_trip(tmp_storage):
     assert storage.list_templates() == []
 
 
+def test_template_preserves_scripted_events(tmp_storage):
+    cfg = _config()
+    cfg.auto_inject = True
+    cfg.scripted_events = {2: "quake", 4: "strike"}
+    storage.save_template("Scripted", cfg)
+    loaded = storage.load_template("Scripted")
+    assert loaded.auto_inject is True
+    assert loaded.scripted_events == {2: "quake", 4: "strike"}
+
+
 def test_run_round_trip_newest_first(tmp_storage):
     older = SimulationRun(config=_config(), created_at=datetime(2026, 1, 1))
     newer = SimulationRun(config=_config(), created_at=datetime(2026, 2, 1))

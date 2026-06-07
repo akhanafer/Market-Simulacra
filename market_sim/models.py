@@ -78,13 +78,22 @@ class SimulationConfig(BaseModel):
     duration_days: int = 30
     step_interval: StepInterval = "week"
     shared_decisions: bool = False
+    # When true, events are injected from `scripted_events` instead of being typed
+    # in live during the run. Defined before the run, then locked in like the rest
+    # of the config (deep-copied into the SimulationRun at start).
+    auto_inject: bool = False
+    # Scripted events keyed by step number (2..N). Step 1 is always the baseline,
+    # so it is excluded; steps with no entry inject nothing. Keyed by step number
+    # (not a list) so it tolerates the user later changing duration/interval.
+    scripted_events: dict[int, str] = Field(default_factory=dict)
     # Sampling temperature for every LLM call this run. Defaults to 0.0 for
     # reproducibility (the same config + history should reproduce a step); raise
     # it to study behavioural variance.
     temperature: float = 0.0
     # Reasoning effort for OpenAI reasoning models (e.g. gpt-5.4-mini). Defaults
-    # to "minimal" to keep reasoning-token spend low; non-reasoning models ignore it.
-    reasoning_effort: ReasoningEffort = "minimal"
+    # to "low" (the lowest level gpt-5.4-mini accepts — it rejects "minimal") to
+    # keep reasoning-token spend low; non-reasoning models ignore it.
+    reasoning_effort: ReasoningEffort = "low"
 
     def total_steps(self) -> int:
         per = INTERVAL_DAYS[self.step_interval]

@@ -78,13 +78,17 @@ def render_sidebar() -> None:
         cfg.model = models[chosen]
 
         if llm.is_reasoning_model(cfg.model):
-            efforts: list[ReasoningEffort] = ["none", "minimal", "low", "medium", "high", "xhigh"]
+            # "minimal" is intentionally omitted: gpt-5.4-mini rejects it. A config
+            # loaded with "minimal" still validates (it's a legal enum value), so
+            # snap it to a supported default rather than crashing on .index().
+            efforts: list[ReasoningEffort] = ["none", "low", "medium", "high", "xhigh"]
+            current = cfg.reasoning_effort if cfg.reasoning_effort in efforts else "low"
             cfg.reasoning_effort = cast(
                 ReasoningEffort,
                 st.selectbox(
                     "Reasoning effort",
                     efforts,
-                    index=efforts.index(cfg.reasoning_effort),
+                    index=efforts.index(current),
                     help="How hard the model thinks before answering. Lower = fewer "
                     "(billed) reasoning tokens; 'none' turns reasoning off.",
                 ),
@@ -163,6 +167,15 @@ def render_setup() -> None:
         help="Let later personas see earlier personas' decisions within the same step.",
     )
     st.caption(f"→ {cfg.total_steps()} step(s) total.")
+
+    cfg.auto_inject = st.checkbox(
+        "Auto-inject scripted events",
+        value=cfg.auto_inject,
+        help="Pre-define an event for each step now, instead of typing one in live "
+        "during the run. Step 1 is always the baseline (no event).",
+    )
+    if cfg.auto_inject:
+        _render_scripted_events()
 
     st.divider()
     _render_personas()
@@ -252,6 +265,31 @@ def _render_policy() -> None:
     )
 
 
+def _render_scripted_events() -> None:
+    st.subheader("Scripted events")
+    st.caption(
+        "One event per step, injected automatically before that step runs. Leave a "
+        "step blank to inject nothing. Step 1 establishes the baseline and takes no event."
+    )
+    total = cfg.total_steps()
+    if total < 2:
+        st.info("Only one step — no events to script. Increase the duration to schedule events.")
+        return
+    for n in range(2, total + 1):
+        the_date = engine.step_date(cfg, n).isoformat()
+        cfg.scripted_events[n] = st.text_area(
+            f"Step {n} — {the_date}",
+            value=cfg.scripted_events.get(n, ""),
+            key=f"scripted_evt_{n}",
+            height=70,
+            placeholder="e.g. A major earthquake disrupts the southern industrial region.",
+        )
+    # Drop entries for steps that no longer exist (duration/interval shrank), so a
+    # saved template doesn't carry stale events past the end of the run.
+    for stale in [n for n in cfg.scripted_events if n > total]:
+        del cfg.scripted_events[stale]
+
+
 def _start_run() -> None:
     run = SimulationRun(
         config=copy.deepcopy(cfg),
@@ -291,6 +329,12 @@ def render_simulate() -> None:
     injection = ""
     if done_steps == 0:
         st.caption("The first step runs from the initial market state — inject events from step 2 onward.")
+    elif rcfg.auto_inject:
+        injection = rcfg.scripted_events.get(done_steps + 1, "")
+        if injection:
+            st.info(f"Scripted event for the next step:\n\n{injection}")
+        else:
+            st.caption("Auto-inject is on, but no event is scripted for the next step.")
     else:
         injection = st.text_area(
             "Inject an event before the next step (optional)",

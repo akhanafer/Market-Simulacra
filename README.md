@@ -17,8 +17,9 @@ so you can inject events (disasters, geopolitical shocks, etc.).
   install its SDK (see *Adding a provider* below). Edit the `PROVIDERS`
   registry in `market_sim/llm.py` to change the model lists.
 - **Reasoning effort** — for OpenAI reasoning models (e.g. `gpt-5.4-mini`), a
-  sidebar control sets `reasoning_effort` (`none`…`xhigh`, default `minimal`) to
-  cap reasoning-token spend. The control is hidden for non-reasoning models.
+  sidebar control sets `reasoning_effort` (`none`/`low`/`medium`/`high`/`xhigh`,
+  default `low`) to cap reasoning-token spend. The control is hidden for
+  non-reasoning models.
 - **Environment definition** — free-text initial market state.
 - **Dynamic personas** — add, reorder (↑/↓), and remove actors with a name and
   description.
@@ -26,10 +27,15 @@ so you can inject events (disasters, geopolitical shocks, etc.).
 - **Index tracking** — custom indicators reported per step as direction
   (▲ up / ▼ down / ■ flat) + magnitude + rationale, not absolute values.
 - **Step-by-step execution** — runs one step per click; inject events between steps.
+- **Scripted events** — optionally pre-define an event per step ahead of the run,
+  so the simulation injects them automatically instead of you typing one in live
+  each step (step 1 is always the baseline). Toggle it in the Setup tab.
 - **Shared decisions** — optionally let later personas see earlier personas'
   decisions within the same step.
 - **Configurable timeframes** — start date, duration in days, step interval
   (day/week/month/year).
+- **Sampling temperature** — set the temperature applied to every call this run
+  (default `0.0` for reproducibility; raise it to study behavioural variance).
 - **Real-time output** — live token streaming; tabbed views for decisions,
   indices, and market state.
 - **Templates** — save/load simulation configs (`data/templates/`).
@@ -80,8 +86,8 @@ For Gemini, **verify the model IDs** in the `PROVIDERS` registry in
 `market_sim/llm.py` against its current model list (those defaults are placeholders).
 
 To add a brand-new provider, write an `LLMClient` subclass implementing
-`stream_text` and `complete`, then add an entry to `PROVIDERS`. No changes to
-`app.py` or `engine.py` are needed.
+`stream_text`, `complete`, and `structured_output`, then add an entry to
+`PROVIDERS`. No changes to `app.py` or `engine.py` are needed.
 
 ## Project layout
 
